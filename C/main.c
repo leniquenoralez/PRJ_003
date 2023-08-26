@@ -16,7 +16,7 @@
 char *DIRECTORY = NULL;
 char *ADDRESS = NULL;
 char *LOG_FILE = NULL;
-int PORT = 9000;
+char *PORT = "9000";
 int nextAvailableFd(int *client_fds, int maxClients){
     int i = 0;
     while (client_fds[i] != 0 && i < maxClients)
@@ -24,89 +24,64 @@ int nextAvailableFd(int *client_fds, int maxClients){
         i++;
     }
     return i;
-} 
-int initServer(int port)
+}
+int initServer(struct addrinfo hints, struct addrinfo *servinfo, char *port)
 {
-    int serverSock;
-    socklen_t length;
-    struct sockaddr_in server;
+    int status;
+    int sockfd;
+    struct addrinfo  *p;
+    int yes = 1;
 
-    memset(&server, 0, sizeof(server));
+    hints.ai_family = AF_UNSPEC;     
+    hints.ai_socktype = SOCK_STREAM; 
+    hints.ai_flags = AI_PASSIVE;     
 
-    if ((serverSock = socket(PF_INET, SOCK_STREAM, 0)) < 0)
+    if ((status = getaddrinfo(NULL, port, &hints, &servinfo)) != 0)
     {
-        perror("opening stream socket");
-        exit(EXIT_FAILURE);
+        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+        exit(1);
     }
-    server.sin_family = PF_INET;
-    server.sin_addr.s_addr = INADDR_ANY;
-    server.sin_port = htons(PORT);
-
-    if (bind(serverSock, (struct sockaddr *)&server, sizeof(server)) != 0)
+    for (p = servinfo; p != NULL; p = p->ai_next)
     {
-        perror("binding stream socket");
-        exit(EXIT_FAILURE);
+        if ((sockfd = socket(p->ai_family, p->ai_socktype,
+                             p->ai_protocol)) == -1)
+        {
+            perror("server: socket");
+            continue;
+        }
+
+        if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
+        {
+            perror("setsockopt");
+            exit(1);
+        }
+
+        if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1)
+        {
+            close(sockfd);
+            perror("server: bind");
+            continue;
+        }
+
+        break;
     }
 
-    length = sizeof(server);
-    if (getsockname(serverSock, (struct sockaddr *)&server, &length) != 0)
+    freeaddrinfo(servinfo);
+
+    if (p == NULL)
     {
-        perror("getting socket name");
-        exit(EXIT_FAILURE);
-    }
-    if (listen(serverSock, BACKLOG) == -1)
-    {
-        perror("listen");
-        close(serverSock);
+        fprintf(stderr, "server: failed to bind\n");
         exit(1);
     }
 
-    char ip_address[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &(server.sin_addr), ip_address, INET_ADDRSTRLEN);
+    if (listen(sockfd, BACKLOG) == -1)
+    {
+        perror("listen");
+        exit(1);
+    }
+    return sockfd;
+}
 
-    printf("Server listening on %s:%d...\n", ip_address, ntohs(server.sin_port));
-    return serverSock;
-}
-void initClientFds(int *client_fds, int maxClients)
-{
-    for (int i = 0; i < maxClients; ++i)
-    {
-        client_fds[i] = 0;
-    }
-}
-fd_set initReadFds(int server_fd)
-{
-    fd_set read_fds;
-    FD_ZERO(&read_fds);
-    FD_SET(server_fd, &read_fds);
-    return read_fds;
-}
-void addClientReadFds(int *client_fds, fd_set read_fds, int *max_fd, int maxClients)
-{
-    for (int i = 0; i < maxClients; ++i)
-    {
-        int fd = client_fds[i];
-        if (fd > 0)
-        {
-            FD_SET(fd, &read_fds);
-            if (fd > *max_fd)
-            {
-                *max_fd = fd;
-            }
-        }
-    }
-}
-char *getClientAddress(struct sockaddr_in client_addr)
-{
-    char client_ip_address[INET_ADDRSTRLEN];
-    const char *rip = inet_ntop(AF_INET, &(client_addr.sin_addr), client_ip_address, INET_ADDRSTRLEN);
-    if (rip == NULL)
-    {
-        return "unknown";
-    }
-
-    return client_ip_address;
-}
 int decodeFlags(int argc, char **argv)
 {
     int opt;
@@ -126,7 +101,7 @@ int decodeFlags(int argc, char **argv)
             LOG_FILE = optarg;
             break;
         case 'p':
-            PORT = atoi(optarg);
+            PORT = optarg;
             break;
         case 'd':
         case 'h':
@@ -147,72 +122,12 @@ int decodeFlags(int argc, char **argv)
 int main(int argc, char **argv)
 {
     decodeFlags(argc, argv);
-
-    int server_fd = initServer(PORT);
-    int client_fds[MAX_CLIENTS];
-    int max_fd;
-    int activity;
-    struct sockaddr_in client_addr;
-    socklen_t addr_len = sizeof(client_addr);
-    char buffer[1024] = {0};
-
-    initClientFds(client_fds, MAX_CLIENTS);
-
-    while (1)
-    {
-        fd_set read_fds = initReadFds(server_fd);
-        max_fd = server_fd;
-
-        addClientReadFds(client_fds, read_fds, &max_fd, MAX_CLIENTS);
-        activity = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
-
-        if (activity == -1)
-        {
-            perror("select");
-        }
-
-        if (FD_ISSET(server_fd, &read_fds))
-        {
-            int new_socket = accept(server_fd, (struct sockaddr *)&client_addr, &addr_len);
-            if (new_socket == -1)
-            {
-                perror("accept");
-            }
-            else
-            {
-                printf("New connection accepted, socket fd is %d\n", new_socket);
-                int nextFd = nextAvailableFd(client_fds, MAX_CLIENTS);
-                client_fds[nextFd] = new_socket;
-            }
-        }
-
-        for (int i = 0; i < MAX_CLIENTS; ++i)
-        {
-            int fd = client_fds[i];
-            if (FD_ISSET(fd, &read_fds))
-            {
-                ssize_t read_size = recv(fd, buffer, sizeof(buffer), 0);
-                if (read_size <= 0)
-                {
-                    // Connection closed or error
-                    printf("Client disconnected, socket fd is %d\n", fd);
-                    close(fd);
-                    client_fds[i] = 0;
-                }
-                else
-                {
-                    // Handle received data, for example, send a response
-                    char *client_ip_address = getClientAddress(client_addr);
-                    
-                    (void)printf("Client (%s) sent: \"%s\"", client_ip_address, buffer);
-
-                    send(fd, buffer, read_size, 0);
-                }
-            }
-        }
-    }
-    
-
+    struct addrinfo hints, *servinfo;
+    memset(&hints, 0, sizeof hints);
+    memset(&servinfo, 0, sizeof servinfo);
+    int server_fd = initServer(hints, servinfo, PORT);
+    printf("Sever socket descriptor is %d", server_fd);
+    // TODO:
     // TODO: Speaks only HTTP/1.0
     return 0;
 }
