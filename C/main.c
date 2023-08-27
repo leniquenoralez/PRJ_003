@@ -25,6 +25,34 @@ int nextAvailableFd(int *client_fds, int maxClients){
     }
     return i;
 }
+void *GetInAddr(struct sockaddr *sa)
+{
+    if (sa->sa_family == AF_INET)
+    {
+        return &(((struct sockaddr_in *)sa)->sin_addr);
+    }
+
+    return &(((struct sockaddr_in6 *)sa)->sin6_addr);
+}
+void AddClient(struct pollfd *poll_fds[], int new_client_fd, int *connected_sockets_count, int *max_connected_sockets)
+{
+    if (*connected_sockets_count == *max_connected_sockets)
+    {
+        *max_connected_sockets *= 2; 
+
+        *poll_fds = realloc(*poll_fds, sizeof(**poll_fds) * (*max_connected_sockets));
+    }
+
+    (*poll_fds)[*connected_sockets_count].fd = new_client_fd;
+    (*poll_fds)[*connected_sockets_count].events = POLLIN;
+    (*connected_sockets_count)++;
+}
+void DeleteClientFd(struct pollfd poll_fds[], int index, int *connected_sockets_count)
+{
+    poll_fds[index] = poll_fds[*connected_sockets_count - 1];
+
+    (*connected_sockets_count)--;
+}
 int InitServer() {
     int status;
     int server_fd;
@@ -87,7 +115,95 @@ int InitServer() {
     printf("Server Listening on %s 🚀\n\n", PORT);
     return server_fd;
 }
+int IsReady(struct pollfd poll_fds[], int index)
+{
+    if (poll_fds[index].revents & POLLIN)
+    {
+        return 0;
+    }
 
+    return -1;
+}
+int IsServerReady(struct pollfd poll_fds[], int server_fd, int index)
+{
+    if (IsReady(poll_fds, index) == 0 && poll_fds[index].fd == server_fd)
+    {
+        return 0;
+    }
+
+    return -1;
+}
+int IsClientReady(struct pollfd poll_fds[], int server_fd, int index)
+{
+    if (IsReady(poll_fds, index) == 0 && poll_fds[index].fd != server_fd)
+    {
+        return 0;
+    }
+
+    return -1;
+}
+void HandleRequest(struct pollfd poll_fds[], int *connected_sockets_count, int index)
+{
+    char data_buffer[256];
+    int client_fd = poll_fds[index].fd;
+    int received_bytes = recv(client_fd, data_buffer, sizeof data_buffer, 0);
+
+    if (received_bytes <= 0)
+    {
+        if (received_bytes == 0)
+        {
+            printf("Server: socket %d hung up\n", client_fd);
+        }
+        else
+        {
+            perror("recv");
+        }
+
+        close(client_fd);
+        DeleteClientFd(poll_fds, index, connected_sockets_count);
+    }
+    else
+    {
+        printf("Client %d sent %s \n", client_fd, data_buffer);
+
+        if (send(client_fd, "Hello World", 12, 0) == -1)
+        {
+            perror("send");
+        }
+    }
+}
+
+void CheckReady(struct pollfd poll_fds[], int server_fd, int *connected_sockets_count, int *max_connected_sockets)
+{
+    struct sockaddr_storage client_addr;
+    socklen_t client_addr_len;
+    int current_client_fd;
+    char remoteIP[INET6_ADDRSTRLEN];
+    for (size_t i = 0; i < *connected_sockets_count; i++)
+    {
+        if (IsServerReady(poll_fds, server_fd, i) == 0)
+        {
+            printf("Server ready to receive data 📨!!!\n");
+            client_addr_len = sizeof client_addr;
+            current_client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_len);
+            if (current_client_fd == -1)
+            {
+                perror("accept");
+                exit(1);
+            }
+            AddClient(&poll_fds, current_client_fd, connected_sockets_count, max_connected_sockets);
+            void * client_in_addr = GetInAddr((struct sockaddr *)&client_addr);
+            inet_ntop(client_addr.ss_family, client_in_addr, remoteIP, INET6_ADDRSTRLEN);
+            printf("New connection from %s\n", remoteIP);
+        }
+        if (IsClientReady(poll_fds, server_fd, i) == 0)
+        {
+            printf("Got Client data 📦!!!");
+            HandleRequest(poll_fds, connected_sockets_count,i);
+        }
+        
+    }
+}
 int DecodeFlags(int argc, char **argv)
 {
     int opt;
@@ -128,11 +244,6 @@ int DecodeFlags(int argc, char **argv)
 int main(int argc, char **argv)
 {
     DecodeFlags(argc, argv);
-    int current_client_fd;
-    struct sockaddr_storage client_addr;
-    socklen_t client_addr_len;
-    char data_buffer[256];
-    char client_ip[INET6_ADDRSTRLEN];
 
     int server_fd = InitServer();
     if (server_fd == -1)
@@ -149,7 +260,17 @@ int main(int argc, char **argv)
     poll_fds[0].events = POLL_IN;
 
     connected_sockets_count = 1;
+    for (;;)
+    {
+        int events_count = poll(poll_fds, connected_sockets_count, -1);
 
+        if (events_count == -1)
+        {
+            perror("poll");
+            exit(1);
+        }
+        CheckReady(poll_fds, server_fd, &connected_sockets_count, &max_connected_sockets);
+    }
 
     return 0;
 }
