@@ -11,7 +11,10 @@
 #include <unistd.h>
 #include <errno.h>
 #include <poll.h>
+#include <string.h>
+
 #define BACKLOG 5
+#define BUFFER_SIZE 1024
 
 char *DIRECTORY = NULL;
 char *ADDRESS = NULL;
@@ -139,35 +142,104 @@ int ServerHadActivity(struct pollfd poll_fds[])
 
     return -1;
 }
+int ReadRequestLine(int client_fd, char partial_line[])
+{
+    char data_buffer[BUFFER_SIZE];
+    ssize_t received_bytes;
+    char *newline_ptr;
+    size_t partial_length = 0;
+    while (1)
+    {
+        received_bytes = recv(client_fd, data_buffer, sizeof(data_buffer), 0);
+        if (received_bytes < 0)
+        {
+            perror("recv");
+            return -1;
+        }
 
+        if (received_bytes == 0)
+        {
+            printf("Connection closed by peer.\n");
+            return -1;
+        }
+        memcpy(partial_line + partial_length, data_buffer, received_bytes);
+        partial_length += received_bytes;
+        
+        
+        if ((newline_ptr = strstr(partial_line, "\r\n")) != NULL)
+        {
+            size_t line_length = newline_ptr - partial_line;
+            *newline_ptr = '\0';
+            printf("Received line: %s\n", partial_line);
+
+            memmove(partial_line, newline_ptr + 2, partial_length - line_length - 2);
+            partial_length -= line_length + 2;
+            break;
+        }
+    }
+    return 0;
+}
+int CheckRequestEnd(int client_fd)
+{
+    char data_buffer[BUFFER_SIZE];
+    ssize_t received_bytes;
+    received_bytes = recv(client_fd, data_buffer, sizeof(data_buffer), 0);
+    if (received_bytes < 0)
+    {
+        perror("recv");
+        return -1;
+    }
+
+    if (received_bytes == 0)
+    {
+        printf("Connection closed by peer.\n");
+        return -1;
+    }
+
+    data_buffer[received_bytes] = '\0';
+
+    return strcmp(data_buffer, "\r\n");
+}
+int ParseRequest(int client_fd, char *parsed_request[]){
+    char request_line[BUFFER_SIZE * 2];
+    char request_header[BUFFER_SIZE];
+    if (ReadRequestLine(client_fd, request_line) == -1)
+    {
+        return -1;
+    }
+
+    if (CheckRequestEnd(client_fd) == 0)
+    {
+        /*
+        TODO: 
+            - Parse request line [METHOD, URI, VERSION]
+            - Validate Request Line
+            - find uri resource
+        */
+        return 0;
+    }
+    else
+    {
+        return -1;
+    }
+}
 void HandleRequest(struct pollfd poll_fds[], int index, int *connected_sockets_count)
 {
 
-    char data_buffer[256];
+    
+    char *parsed_buffer[256];
     int client_fd = poll_fds[index].fd;
-    int received_bytes = recv(client_fd, data_buffer, sizeof data_buffer, 0);
-
-    if (received_bytes <= 0)
-    {
-        if (received_bytes == 0)
-        {
-            printf("Server: socket %d hung up\n", client_fd);
-        }
-        else
-        {
-            perror("recv");
-        }
-
-        close(client_fd);
-        DeleteClientFd(poll_fds, index, connected_sockets_count);
-    }
-    else
+    if (ParseRequest(client_fd, parsed_buffer) == 0)
     {
         if (send(client_fd, "Hello World\n\0", 14, 0) == -1)
         {
             perror("send");
         }
+    } else {
+        close(client_fd);
+        DeleteClientFd(poll_fds, index, connected_sockets_count);
     }
+
 }
 
 void CheckServerActivity(struct pollfd poll_fds[], int server_fd, int *connected_sockets_count, int *max_connected_sockets)
