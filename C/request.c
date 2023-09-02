@@ -2,6 +2,7 @@
 #include <sys/types.h>
 #include <string.h>
 #include <stdio.h>
+#include "request.h"
 
 #define BUFFER_SIZE 1024
 
@@ -89,21 +90,31 @@ int ReadHttpHeaders(char *request_message, size_t request_length, char *request_
     request_headers[headers_length] = '\0';
     return headers_length;
 }
-int ParseHttpRequest(char *request_message, int request_length, HttpRequest *parsed_request)
+int ParseHttpRequest(char *request_message, int request_length, char *request, char *headers)
 {
-    char request_line[BUFFER_SIZE];
-    char request_headers[BUFFER_SIZE];
-    size_t request_line_length = ReadRequestLine(request_message, request_line, request_length);
+    size_t request_line_length = ReadRequestLine(request_message, request, request_length);
     if (request_line_length <= 0)
     {
         return -1;
     }
-    
-    size_t headers_length = ReadHttpHeaders(request_message, request_length, request_headers, request_line_length);
+
+    size_t headers_length = ReadHttpHeaders(request_message, request_length, headers, request_line_length);
     if (headers_length < 0)
     {
         return -1;
     }
 
     return 0;
+}
+
+int ParseHttpRequestLine(char *request, httpRequestLine *request_line){
+    if (sscanf(request, "%s %s %s", request_line->method, request_line->uri, request_line->version) != 3)
+    {
+        return -1;
+    }
+    return 0;
+}
+
+int ParseHttpRequestHeaders(char *headers, httpRequestHeaders request_headers){
+
 }

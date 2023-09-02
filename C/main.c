@@ -165,19 +165,29 @@ void HandleRequest(struct pollfd poll_fds[], int index, int *connected_sockets_c
     char read_request[BUFFER_SIZE * 2];
     size_t request_length = 0;
 
-    HttpRequest parsed_request;
+    httpRequestLine request_line;
+    httpRequestHeaders request_headers;
+    char request[BUFFER_SIZE];
+    char headers[BUFFER_SIZE];
 
     if (ReadHttpRequest(client_fd, read_request, &request_length) == -1)
     {
         perror("ReadHttpRequest");
     }
-    if (ParseHttpRequest(read_request, request_length, &parsed_request) == -1)
+    if (ParseHttpRequest(read_request, request_length, request, headers) == -1)
     {
-        close(client_fd);
-        DeleteClientFd(poll_fds, index, connected_sockets_count);
-        
+        // close(client_fd);
+        // DeleteClientFd(poll_fds, index, connected_sockets_count);
+        perror("ParseHttpRequest");
+    }
+    if (ParseHttpRequestLine(request, &request_line) == -1)
+    {
+        perror("ParseHttpRequestLine");
     }
 
+    printf("Method: %s\n", request_line.method);
+    printf("URI: %s\n", request_line.uri);
+    printf("Version: %s\n", request_line.version);
 
 }
 
