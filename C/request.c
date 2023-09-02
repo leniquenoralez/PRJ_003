@@ -2,23 +2,44 @@
 #include <sys/types.h>
 #include <string.h>
 #include <stdio.h>
+#include <ctype.h>
 #include "request.h"
 
 #define BUFFER_SIZE 1024
 
-typedef struct
-{
-    char method[1024];
-    char uri[1024];
-    char version[1024];
-    char **headers;
-} HttpRequest;
+const char *GENERAL_HEADERS[] = {
+    "Date",
+    "Pragma",
+};
+
+const char *REQUEST_HEADERS[] = {
+    "Authorization",
+    "From",
+    "If-Modified-Since",
+    "Referer",
+    "User-Agent",
+};
+
+const char *ENTITY_HEADERS[] = {
+    "Allow",
+    "Content-Encoding",
+    "Content-Length",
+    "Content-Type ",
+    "Expires",
+    "Last-Modified",
+    "extension-header",
+};
+
+const char *RESPONSER_HEADERS[] = {
+    "Location",
+    "Server",
+    "WWW-Authenticate",
+};
 
 int ReadHttpRequest(int client_fd, char request_string[], size_t *message_length)
 {
     char data_buffer[BUFFER_SIZE];
     ssize_t received_bytes;
-    char *end_of_line_pointer;
     size_t bytes_read = 0;
     memset(request_string, '\0', BUFFER_SIZE * 2);
 
@@ -41,8 +62,6 @@ int ReadHttpRequest(int client_fd, char request_string[], size_t *message_length
         {
             continue;
         }
-
-        
 
         memcpy(request_string + bytes_read, data_buffer, received_bytes);
         bytes_read += received_bytes;
@@ -83,11 +102,11 @@ int ReadHttpHeaders(char *request_message, size_t request_length, char *request_
         i++;
         headers_length++;
     }
-    if (strncpy(request_headers, request_message + headers_start_pos, headers_length) == NULL)
+    if (strncpy(request_headers, request_message + headers_start_pos, headers_length + strlen("\r\n")) == NULL)
     {
         return -1;
     }
-    request_headers[headers_length] = '\0';
+    request_headers[headers_length + 2] = '\0';
     return headers_length;
 }
 int ParseHttpRequest(char *request_message, int request_length, char *request, char *headers)
@@ -107,14 +126,153 @@ int ParseHttpRequest(char *request_message, int request_length, char *request, c
     return 0;
 }
 
-int ParseHttpRequestLine(char *request, httpRequestLine *request_line){
+int Includes(const char *array[], int size, const char *str)
+{
+    for (int i = 0; i < size; i++)
+    {
+        if (strcmp(str, array[i]) == 0)
+        {
+            return 0;
+        }
+    }
+    return -1;
+}
+
+void Trim(char *string)
+{
+    char *end = string + strlen(string) - 1;
+    while (end > string && isspace((unsigned char)*end))
+    {
+        *end-- = '\0';
+    }
+}
+int ParseHttpRequestLine(char *request, httpRequestLine *request_line)
+{
     if (sscanf(request, "%s %s %s", request_line->method, request_line->uri, request_line->version) != 3)
     {
         return -1;
     }
     return 0;
 }
+int IsGeneralHeader(const char *header_key)
+{
+    int numHeaders = sizeof(GENERAL_HEADERS) / sizeof(GENERAL_HEADERS[0]);
 
-int ParseHttpRequestHeaders(char *headers, httpRequestHeaders request_headers){
+    return Includes(GENERAL_HEADERS, numHeaders, header_key);
+}
+int IsEntityHeader(const char *header_key)
+{
+    int numHeaders = sizeof(ENTITY_HEADERS) / sizeof(ENTITY_HEADERS[0]);
 
+    return Includes(ENTITY_HEADERS, numHeaders, header_key);
+}
+int IsRequestHeader(const char *header_key)
+{
+    int numHeaders = sizeof(REQUEST_HEADERS) / sizeof(REQUEST_HEADERS[0]);
+
+    return Includes(REQUEST_HEADERS, numHeaders, header_key);
+}
+int IsResponseHeader(const char *header_key)
+{
+    int numHeaders = sizeof(RESPONSER_HEADERS) / sizeof(RESPONSER_HEADERS[0]);
+
+    return Includes(RESPONSER_HEADERS, numHeaders, header_key);
+}
+int GetHeaderType(char *key, char *value)
+{
+}
+int SetRequestHeader(char *key, char *value, httpRequestHeaders *request_headers)
+{
+
+    size_t length = strlen(value);
+    if (strcmp(key, "Authorization") == 0)
+    {
+        strncpy(request_headers->authorization, value, length);
+        request_headers->authorization[length] = '\0';
+        return 0;
+    }
+    if (strcmp(key, "From") == 0)
+    {
+        strncpy(request_headers->from, value, length);
+        request_headers->from[length] = '\0';
+        return 0;
+    }
+    if (strcmp(key, "If-Modified-Since") == 0)
+    {
+        strncpy(request_headers->if_modified_since, value, length);
+        request_headers->if_modified_since[length] = '\0';
+        return 0;
+    }
+    if (strcmp(key, "Referer") == 0)
+    {
+        strncpy(request_headers->referer, value, length);
+        request_headers->referer[length] = '\0';
+        return 0;
+    }
+    if (strcmp(key, "User-Agent") == 0)
+    {
+        strncpy(request_headers->user_agent, value, length);
+        request_headers->user_agent[length] = '\0';
+        return 0;
+    }
+    char error_message[100];
+    sprintf(error_message, "Unknown Request Header %s:", key);
+    perror(error_message);
+    return -1;
+}
+
+int SetHttpRequestHeader(char *header, httpRequestHeaders *request_headers)
+{
+    char header_key[64];
+    char header_val[256];
+
+    if (sscanf(header, " %49[^:]: %49[^\n]", header_key, header_val) != 2)
+    {
+        perror("SetHttpRequestHeader: Key");
+    }
+    Trim(header_key);
+    Trim(header_val);
+    if (IsGeneralHeader(header_key) == 0)
+    {
+        printf("is general header!!!\n");
+        return 0;
+    }
+    if (IsEntityHeader(header_key) == 0)
+    {
+        printf("is entity header!!!\n");
+        return 0;
+    }
+    if (IsRequestHeader(header_key) == 0)
+    {
+        return SetRequestHeader(header_key, header_val, request_headers);
+    }
+    if (IsResponseHeader(header_key) == 0)
+    {
+        printf("is response header!!!\n");
+        return 0;
+    }
+    char error_message[100];
+    sprintf(error_message, "Unknown Header %s:", header_key);
+    perror(error_message);
+    return -1;
+}
+int ParseHttpRequestHeaders(char *headers, httpRequestHeaders *request_headers)
+{
+    int headers_length = strlen(headers);
+    char *start_pos = headers;
+    char current_header[BUFFER_SIZE];
+
+    while (*start_pos != '\0')
+    {
+        memset(current_header, '\0', BUFFER_SIZE);
+
+        char *end_pos = strstr(start_pos, "\r\n");
+        int length = end_pos - start_pos;
+        strncpy(current_header, start_pos, length);
+        current_header[length] = '\0';
+        SetHttpRequestHeader(current_header, request_headers);
+        start_pos = end_pos;
+        start_pos += strlen("\r\n");
+    }
+    return 0;
 }

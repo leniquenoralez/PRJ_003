@@ -17,16 +17,6 @@
 #define BACKLOG 5
 #define BUFFER_SIZE 1024
 
-typedef enum
-{
-    METHOD_GET,
-    METHOD_HEAD,
-} RequestMethod;
-typedef enum
-{
-    HEADER_IF_MODIFIED_SINCE,
-} RequestHeader;
-
 
 
 char *DIRECTORY = NULL;
@@ -184,11 +174,10 @@ void HandleRequest(struct pollfd poll_fds[], int index, int *connected_sockets_c
     {
         perror("ParseHttpRequestLine");
     }
-
-    printf("Method: %s\n", request_line.method);
-    printf("URI: %s\n", request_line.uri);
-    printf("Version: %s\n", request_line.version);
-
+    if (ParseHttpRequestHeaders(headers, &request_headers) == -1)
+    {
+        perror("ParseHttpRequestLine");
+    }
 }
 
 void CheckServerActivity(struct pollfd poll_fds[], int server_fd, int *connected_sockets_count, int *max_connected_sockets)
