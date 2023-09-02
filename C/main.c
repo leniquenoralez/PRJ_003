@@ -171,25 +171,13 @@ void HandleRequest(struct pollfd poll_fds[], int index, int *connected_sockets_c
     {
         perror("ReadHttpRequest");
     }
+    if (ParseHttpRequest(read_request, request_length, &parsed_request) == -1)
+    {
+        close(client_fd);
+        DeleteClientFd(poll_fds, index, connected_sockets_count);
+        
+    }
 
-    printf("Full Request: %s\n", read_request);
-    printf("Request Length: %ld\n", request_length);
-
-    ParseHttpRequest(read_request, request_length, &parsed_request);
-    // if (ParseHttpRequest(read_request, request_length, &parsed_request))
-    // {
-    //     perror("ParseHttpRequest");
-    // }
-
-    // check if method is valid
-    // check if uri location exist
-    // check if version is valid
-    // open uri and send response base on uri
-    // 
-    // else {
-        // close(client_fd);
-        // DeleteClientFd(poll_fds, index, connected_sockets_count);
-    // }
 
 }
 
