@@ -8,5 +8,5 @@ typedef struct
     char **headers;
 } HttpRequest;
 int ReadHttpRequest(int client_fd, char request_string[], size_t *bytes_read);
-void ParseHttpRequest(char *request_message, int request_length, HttpRequest *parsed_request);
+int ParseHttpRequest(char *request_message, int request_length, HttpRequest *parsed_request);
 

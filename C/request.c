@@ -19,7 +19,6 @@ int ReadHttpRequest(int client_fd, char request_string[], size_t *message_length
     ssize_t received_bytes;
     char *end_of_line_pointer;
     size_t bytes_read = 0;
-    int line_read = 0;
     memset(request_string, '\0', BUFFER_SIZE * 2);
 
     while (1)
@@ -42,6 +41,10 @@ int ReadHttpRequest(int client_fd, char request_string[], size_t *message_length
             continue;
         }
 
+        
+
+        memcpy(request_string + bytes_read, data_buffer, received_bytes);
+        bytes_read += received_bytes;
         if (data_buffer[0] == '\r' && data_buffer[1] == '\n')
         {
             request_string[bytes_read] = '\0';
@@ -49,50 +52,58 @@ int ReadHttpRequest(int client_fd, char request_string[], size_t *message_length
             bytes_read = 0;
             break;
         }
-
-        memcpy(request_string + bytes_read, data_buffer, received_bytes);
-        bytes_read += received_bytes;
     }
 
     return 0;
 }
-int ReadRequestLine(char *request_message, char *request_line)
+int ReadRequestLine(char *request_message, char *request_line, size_t request_length)
 {
-    printf("ReadRequestLine ==>\n");
-    char *pos = strstr(request_message, "\r\n");
-    char output[BUFFER_SIZE];
-
-    if (pos == NULL)
+    size_t length = 0;
+    size_t i = 0;
+    while ((request_message[i] != '\r' && request_message[i + 1] != '\n') && i < request_length)
     {
-        return -1;
+        i++;
+        length++;
     }
-
-    size_t length = pos - request_message;
     strncpy(request_line, request_message, length);
     request_line[length] = '\0';
 
     return length;
 }
-void ParseHttpRequest(char *request_message, int request_length, HttpRequest *parsed_request)
-{
-    int line_read = 0;
-    int characters_read = 0;
-    char request_line[BUFFER_SIZE];
-    while (characters_read < request_length)
-    {
-        if (line_read == 0)
-        {
-            int request_line_length = 0;
-            if ((request_line_length = ReadRequestLine(request_message, request_line)) == -1)
-            {
-                perror("ReadRequestLine");
-            }
-            printf("Request Line: %s %d\n", request_line, request_line_length);
-            line_read++;
-            characters_read += request_line_length;
-            continue;
-        }
 
-        characters_read++;
+int ReadHttpHeaders(char *request_message, size_t request_length, char *request_headers, size_t request_line_length)
+{
+    size_t headers_start_pos = request_line_length + strlen("\r\n");
+    size_t headers_length = 0;
+    size_t i = headers_start_pos;
+    size_t end = request_length - strlen("\r\n\r\n");
+    while (i < end)
+    {
+        i++;
+        headers_length++;
     }
+    if (strncpy(request_headers, request_message + headers_start_pos, headers_length) == NULL)
+    {
+        return -1;
+    }
+    request_headers[headers_length] = '\0';
+    return headers_length;
+}
+int ParseHttpRequest(char *request_message, int request_length, HttpRequest *parsed_request)
+{
+    char request_line[BUFFER_SIZE];
+    char request_headers[BUFFER_SIZE];
+    size_t request_line_length = ReadRequestLine(request_message, request_line, request_length);
+    if (request_line_length <= 0)
+    {
+        return -1;
+    }
+    
+    size_t headers_length = ReadHttpHeaders(request_message, request_length, request_headers, request_line_length);
+    if (headers_length < 0)
+    {
+        return -1;
+    }
+
+    return 0;
 }
