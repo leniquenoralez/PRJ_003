@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include "request.h"
+#include <poll.h>
 
 #define BUFFER_SIZE 1024
 
@@ -178,9 +179,6 @@ int IsResponseHeader(const char *header_key)
 
     return Includes(RESPONSER_HEADERS, numHeaders, header_key);
 }
-int GetHeaderType(char *key, char *value)
-{
-}
 int SetRequestHeader(char *key, char *value, httpRequestHeaders *request_headers)
 {
 
@@ -258,7 +256,6 @@ int SetHttpRequestHeader(char *header, httpRequestHeaders *request_headers)
 }
 int ParseHttpRequestHeaders(char *headers, httpRequestHeaders *request_headers)
 {
-    int headers_length = strlen(headers);
     char *start_pos = headers;
     char current_header[BUFFER_SIZE];
 
@@ -275,4 +272,35 @@ int ParseHttpRequestHeaders(char *headers, httpRequestHeaders *request_headers)
         start_pos += strlen("\r\n");
     }
     return 0;
+}
+
+void HandleRequest(struct pollfd poll_fds[], int index, int *connected_sockets_count)
+{
+
+    int client_fd = poll_fds[index].fd;
+
+    char read_request[BUFFER_SIZE * 2];
+    size_t request_length = 0;
+
+    httpRequestLine request_line;
+    httpRequestHeaders request_headers;
+    char request[BUFFER_SIZE];
+    char headers[BUFFER_SIZE];
+
+    if (ReadHttpRequest(client_fd, read_request, &request_length) == -1)
+    {
+        perror("ReadHttpRequest");
+    }
+    if (ParseHttpRequest(read_request, request_length, request, headers) == -1)
+    {
+        perror("ParseHttpRequest");
+    }
+    if (ParseHttpRequestLine(request, &request_line) == -1)
+    {
+        perror("ParseHttpRequestLine");
+    }
+    if (ParseHttpRequestHeaders(headers, &request_headers) == -1)
+    {
+        perror("ParseHttpRequestLine");
+    }
 }

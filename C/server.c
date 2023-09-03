@@ -1,11 +1,13 @@
 #include "server.h"
-
+#include "client.h"
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <poll.h>
 
 int InitServer(char *port) {
     int status;
@@ -68,4 +70,42 @@ int InitServer(char *port) {
     }
     printf("Server Listening on %s 🚀\n\n", port);
     return server_fd;
+}
+
+int ServerHadActivity(struct pollfd poll_fds[])
+{
+    if (poll_fds[0].revents & POLLIN)
+    {
+        return 0;
+    }
+
+    return -1;
+}
+
+void *GetInAddr(struct sockaddr *sa)
+{
+    if (sa->sa_family == AF_INET)
+    {
+        return &(((struct sockaddr_in *)sa)->sin_addr);
+    }
+
+    return &(((struct sockaddr_in6 *)sa)->sin6_addr);
+}
+
+void CheckServerActivity(struct pollfd poll_fds[], int server_fd, int *connected_sockets_count, int *max_connected_sockets)
+{
+    struct sockaddr_storage client_addr;
+    socklen_t client_addr_len;
+    int new_client_fd;
+    if (ServerHadActivity(poll_fds) == 0)
+    {
+        client_addr_len = sizeof client_addr;
+        new_client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_len);
+        if (new_client_fd == -1)
+        {
+            perror("accept");
+        }
+        AddClient(poll_fds, new_client_fd, connected_sockets_count, max_connected_sockets);
+        printf("New connection accepted, socket fd is %d\n", new_client_fd);
+    }
 }
