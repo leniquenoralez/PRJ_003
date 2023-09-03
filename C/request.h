@@ -11,16 +11,19 @@ typedef struct HttpRequestLine
 } httpRequestLine;
 typedef struct HttpGeneralHeaders
 {
-    char method[REQUEST_BUFFER_SIZE];
-    char uri[REQUEST_BUFFER_SIZE];
-    char version[REQUEST_BUFFER_SIZE];
+    char date[REQUEST_BUFFER_SIZE];
+    char pragma[REQUEST_BUFFER_SIZE];
 } httpGeneralHeaders;
 
 typedef struct HttpEntityHeaders
 {
-    char method[REQUEST_BUFFER_SIZE];
-    char uri[REQUEST_BUFFER_SIZE];
-    char version[REQUEST_BUFFER_SIZE];
+    char allow[REQUEST_BUFFER_SIZE];
+    char content_encoding[REQUEST_BUFFER_SIZE];
+    char content_length[REQUEST_BUFFER_SIZE];
+    char content_type[REQUEST_BUFFER_SIZE];
+    char expires[REQUEST_BUFFER_SIZE];
+    char last_modified[REQUEST_BUFFER_SIZE];
+    char extension_header[REQUEST_BUFFER_SIZE];
 } httpEntityHeaders;
 typedef struct HttpBaseHeaders
 {

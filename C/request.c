@@ -2,6 +2,8 @@
 #include <sys/types.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
+#include <unistd.h>
 #include <ctype.h>
 #include "request.h"
 #include <poll.h>
@@ -31,10 +33,15 @@ const char *ENTITY_HEADERS[] = {
     "extension-header",
 };
 
-const char *RESPONSER_HEADERS[] = {
+const char *RESPONSE_HEADERS[] = {
     "Location",
     "Server",
     "WWW-Authenticate",
+};
+
+const char *RESPONSE_METHODS[] = {
+    "GET",
+    "HEAD",
 };
 
 int ReadHttpRequest(int client_fd, char request_string[], size_t *message_length)
@@ -157,27 +164,34 @@ int ParseHttpRequestLine(char *request, httpRequestLine *request_line)
 }
 int IsGeneralHeader(const char *header_key)
 {
-    int numHeaders = sizeof(GENERAL_HEADERS) / sizeof(GENERAL_HEADERS[0]);
+    int num_general_header = sizeof(GENERAL_HEADERS) / sizeof(GENERAL_HEADERS[0]);
 
-    return Includes(GENERAL_HEADERS, numHeaders, header_key);
+    return Includes(GENERAL_HEADERS, num_general_header, header_key);
 }
 int IsEntityHeader(const char *header_key)
 {
-    int numHeaders = sizeof(ENTITY_HEADERS) / sizeof(ENTITY_HEADERS[0]);
+    int num_entity_header = sizeof(ENTITY_HEADERS) / sizeof(ENTITY_HEADERS[0]);
 
-    return Includes(ENTITY_HEADERS, numHeaders, header_key);
+    return Includes(ENTITY_HEADERS, num_entity_header, header_key);
 }
 int IsRequestHeader(const char *header_key)
 {
-    int numHeaders = sizeof(REQUEST_HEADERS) / sizeof(REQUEST_HEADERS[0]);
+    int num_request_headers = sizeof(REQUEST_HEADERS) / sizeof(REQUEST_HEADERS[0]);
 
-    return Includes(REQUEST_HEADERS, numHeaders, header_key);
+    return Includes(REQUEST_HEADERS, num_request_headers, header_key);
 }
 int IsResponseHeader(const char *header_key)
 {
-    int numHeaders = sizeof(RESPONSER_HEADERS) / sizeof(RESPONSER_HEADERS[0]);
+    int num_response_headers = sizeof(RESPONSE_HEADERS) / sizeof(RESPONSE_HEADERS[0]);
 
-    return Includes(RESPONSER_HEADERS, numHeaders, header_key);
+    return Includes(RESPONSE_HEADERS, num_response_headers, header_key);
+}
+
+int IsRequestMethodValid(const char *request_method)
+{
+    int num_response_methods = sizeof(RESPONSE_METHODS) / sizeof(RESPONSE_METHODS[0]);
+
+    return Includes(RESPONSE_METHODS, num_response_methods, request_method);
 }
 int SetRequestHeader(char *key, char *value, httpRequestHeaders *request_headers)
 {
@@ -273,6 +287,42 @@ int ParseHttpRequestHeaders(char *headers, httpRequestHeaders *request_headers)
     }
     return 0;
 }
+int ValidateHttpRequestHeaders(httpRequestHeaders *request_headers) {
+    return 0;
+}
+int isValidPath(const char *path)
+{
+    // TODO: properly handle errors, [EACCES, ELOOP, ENAMETOOLONG, ENOENT, ENOTDIR, EROFS, EFAULT, EINVAL, EIO, ENOMEM, ETXTBSY]
+    return access(path, F_OK);
+}
+int IsHttpVersionValid(const char *http_version)
+{
+    if (strcmp(http_version, "HTTP/1.0") != 0)
+    {
+        return -1;
+    }
+    return 0;
+};
+
+int ValidateHttpRequestLine(httpRequestLine *request_line)
+{
+    if (IsRequestMethodValid(request_line->method) == -1)
+    {
+        return -1;
+    }
+    if (IsUriValid(request_line->uri) == -1)
+    {
+        return -1;
+    }
+    if (ResourceExists(request_line->uri) == -1)
+    {
+        return -1;
+    }
+    if (IsHttpVersionValid(request_line->version) == -1)
+    {
+        return -1;
+    }
+}
 
 void HandleRequest(struct pollfd poll_fds[], int index, int *connected_sockets_count)
 {
@@ -287,6 +337,7 @@ void HandleRequest(struct pollfd poll_fds[], int index, int *connected_sockets_c
     char request[BUFFER_SIZE];
     char headers[BUFFER_SIZE];
 
+    // TODO: Create HttpResponse typedef struct to return error code and message
     if (ReadHttpRequest(client_fd, read_request, &request_length) == -1)
     {
         perror("ReadHttpRequest");
@@ -299,8 +350,18 @@ void HandleRequest(struct pollfd poll_fds[], int index, int *connected_sockets_c
     {
         perror("ParseHttpRequestLine");
     }
+    if (ValidateHttpRequestLine(&request_line) == -1)
+    {
+        perror("ValidateHttpRequestLine");
+    }
+
     if (ParseHttpRequestHeaders(headers, &request_headers) == -1)
     {
         perror("ParseHttpRequestLine");
+    }
+
+    if (ValidateHttpRequestHeaders(&request_headers) == -1)
+    {
+        perror("ValidateHttpRequestHeaders");
     }
 }
