@@ -1,5 +1,5 @@
 PROG=	sws
-OBJS=	main.o request.o server.o client.o
+OBJS=	main.o request.o server.o client.o response.o
 CC = gcc
 
 # If commented out, defaults will be used. If uncommented, these values

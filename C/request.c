@@ -1,13 +1,14 @@
 #include <sys/socket.h>
+#include <errno.h>
 #include <sys/types.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <unistd.h>
 #include <ctype.h>
-#include "request.h"
 #include <poll.h>
-
+#include "request.h"
+#include <stdlib.h>
 #define BUFFER_SIZE 1024
 
 const char *GENERAL_HEADERS[] = {
@@ -287,13 +288,37 @@ int ParseHttpRequestHeaders(char *headers, httpRequestHeaders *request_headers)
     }
     return 0;
 }
-int ValidateHttpRequestHeaders(httpRequestHeaders *request_headers) {
+int ValidateHttpRequestHeaders(httpRequestHeaders *request_headers)
+{
     return 0;
+}
+
+char *combinePaths(const char *relativePath)
+{
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd)) == NULL)
+    {
+        perror("getcwd() error");
+        return NULL;
+    }
+
+    char *combinedPath = (char *)malloc(strlen(cwd) + strlen(relativePath) + 2); // +2 for the slash and null terminator
+    if (combinedPath == NULL)
+    {
+        perror("malloc() error");
+        return NULL;
+    }
+
+    strcpy(combinedPath, cwd);
+    strcat(combinedPath, relativePath);
+
+    return combinedPath;
 }
 int isValidPath(const char *path)
 {
     // TODO: properly handle errors, [EACCES, ELOOP, ENAMETOOLONG, ENOENT, ENOTDIR, EROFS, EFAULT, EINVAL, EIO, ENOMEM, ETXTBSY]
-    return access(path, F_OK);
+    char *fullPath = combinePaths(path);
+    return access(fullPath, F_OK);
 }
 int IsHttpVersionValid(const char *http_version)
 {
@@ -304,27 +329,33 @@ int IsHttpVersionValid(const char *http_version)
     return 0;
 };
 
-int ValidateHttpRequestLine(httpRequestLine *request_line)
+int ValidateHttpRequestLine(httpRequestLine *request_line, httpResponse *response)
 {
     if (IsRequestMethodValid(request_line->method) == -1)
     {
+        response->message_length = 29;
+        strncpy(response->message, "Bad Request - Unknown Method", response->message_length);
+        response->status_code = 400;
         return -1;
     }
-    if (IsUriValid(request_line->uri) == -1)
+    if (isValidPath(request_line->uri) == -1)
     {
-        return -1;
-    }
-    if (ResourceExists(request_line->uri) == -1)
-    {
+        response->message_length = 11;
+        strncpy(response->message, "Not Found", response->message_length);
+        response->status_code = 404;
         return -1;
     }
     if (IsHttpVersionValid(request_line->version) == -1)
     {
+        response->message_length = 35;
+        strncpy(response->message, "Bad Request - Unknown HTTP version", response->message_length);
+        response->status_code = 400;
         return -1;
     }
+    return 0;
 }
 
-void HandleRequest(struct pollfd poll_fds[], int index, int *connected_sockets_count)
+int ReadRequest(struct pollfd poll_fds[], int index, int *connected_sockets_count, httpRequestLine *request_line, httpRequestHeaders *request_headers, httpResponse *response)
 {
 
     int client_fd = poll_fds[index].fd;
@@ -332,36 +363,53 @@ void HandleRequest(struct pollfd poll_fds[], int index, int *connected_sockets_c
     char read_request[BUFFER_SIZE * 2];
     size_t request_length = 0;
 
-    httpRequestLine request_line;
-    httpRequestHeaders request_headers;
+
     char request[BUFFER_SIZE];
     char headers[BUFFER_SIZE];
 
-    // TODO: Create HttpResponse typedef struct to return error code and message
     if (ReadHttpRequest(client_fd, read_request, &request_length) == -1)
     {
-        perror("ReadHttpRequest");
+        response->message_length = 11;
+        strncpy(response->message, "Bad Request", response->message_length);
+        response->status_code = 400;
+        return -1;
     }
     if (ParseHttpRequest(read_request, request_length, request, headers) == -1)
     {
-        perror("ParseHttpRequest");
+        response->message_length = 11;
+        strncpy(response->message, "Bad Request", response->message_length);
+        response->status_code = 400;
+        return -1;
     }
-    if (ParseHttpRequestLine(request, &request_line) == -1)
+    if (ParseHttpRequestLine(request, request_line) == -1)
     {
-        perror("ParseHttpRequestLine");
+        response->message_length = 11;
+        strncpy(response->message, "Bad Request", response->message_length);
+        response->status_code = 400;
+        return -1;
     }
-    if (ValidateHttpRequestLine(&request_line) == -1)
+    if (ValidateHttpRequestLine(request_line, response) == -1)
     {
-        perror("ValidateHttpRequestLine");
+        return -1;
     }
 
-    if (ParseHttpRequestHeaders(headers, &request_headers) == -1)
+    if (ParseHttpRequestHeaders(headers, request_headers) == -1)
     {
-        perror("ParseHttpRequestLine");
+        response->message_length = 29;
+        strncpy(response->message, "Bad Request - Unknown Header", response->message_length);
+        response->status_code = 400;
+        return -1;
     }
 
-    if (ValidateHttpRequestHeaders(&request_headers) == -1)
+    if (ValidateHttpRequestHeaders(request_headers) == -1)
     {
-        perror("ValidateHttpRequestHeaders");
+        response->message_length = 29;
+        strncpy(response->message, "Bad Request - Invalid Header", response->message_length);
+        response->status_code = 400;
+        return -1;
     }
+    response->message_length = 3;
+    strncpy(response->message, "OK", response->message_length);
+    response->status_code = 200;
+    return 0;
 }
