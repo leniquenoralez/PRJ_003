@@ -345,6 +345,10 @@ int ValidateHttpRequestLine(httpRequestLine *request_line, httpResponse *respons
         response->status_code = 404;
         return -1;
     }
+    char *fullPath = combinePaths(request_line->uri);
+    memset(request_line->uri, '\0', BUFFER_SIZE);
+    strncpy(request_line->uri, fullPath, strlen(fullPath) + 1);
+
     if (IsHttpVersionValid(request_line->version) == -1)
     {
         response->message_length = 35;

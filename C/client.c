@@ -66,12 +66,12 @@ void CheckClientActivity(struct pollfd poll_fds[], int server_fd, int *connected
             httpResponse response;
             httpRequestLine request_line;
             httpRequestHeaders request_headers;
+            char *full_response_message;
 
             ReadRequest(poll_fds, i, connected_sockets_count, &request_line, &request_headers, &response);
             WriteResponse(&request_line, &request_headers, & response);
-            if (send(poll_fds[i].fd, response.message, response.message_length, 0) == -1)
+            if (send(poll_fds[i].fd, full_response_message, strlen(full_response_message), 0) == -1)
             {
-                printf("ERRNO: %d\n", response.message_length);
                 perror("Send failed");
                 CloseConnection(poll_fds, i, connected_sockets_count);
                 break;
