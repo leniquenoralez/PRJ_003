@@ -317,6 +317,8 @@ char *combinePaths(const char *relativePath)
 int isValidPath(const char *path)
 {
     // TODO: properly handle errors, [EACCES, ELOOP, ENAMETOOLONG, ENOENT, ENOTDIR, EROFS, EFAULT, EINVAL, EIO, ENOMEM, ETXTBSY]
+    // TODO: check if path starts with ~ and resolve to /home/<user>/sws/
+    // TODO: check if path starts with /cgi-bin then and the -c dir is provided then the path is resolve to dir provided with the flag. eg. uri: /cgi-bin/test -c some-folder then uri resolves to /some-folder/test
     char *fullPath = combinePaths(path);
     return access(fullPath, F_OK);
 }
