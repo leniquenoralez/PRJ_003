@@ -1,6 +1,7 @@
 #include <sys/socket.h>
 #include <poll.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include <unistd.h>
 #include "response.h"
@@ -69,8 +70,9 @@ void CheckClientActivity(struct pollfd poll_fds[], int server_fd, int *connected
             char *full_response_message;
 
             ReadRequest(poll_fds, i, connected_sockets_count, &request_line, &request_headers, &response);
-            WriteResponse(&request_line, &request_headers, & response);
-            if (send(poll_fds[i].fd, full_response_message, strlen(full_response_message), 0) == -1)
+            // TODO: check if cgi is enabled and execute cgi.
+            WriteResponse(&request_line, &request_headers, &response);
+            if (send(poll_fds[i].fd, response.message, response.message_length, 0) == -1)
             {
                 perror("Send failed");
                 CloseConnection(poll_fds, i, connected_sockets_count);

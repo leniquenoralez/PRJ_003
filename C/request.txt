@@ -1,4 +1,4 @@
-GET /dev/test/path/index.html HTTP/1.0
+GET /test/index.html HTTP/1.0
 If-Modified-Since: Sat, 29 Oct 1994 19:43:31 GMT
 Authorization: here
 Referer: refers
