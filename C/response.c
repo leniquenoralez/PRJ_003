@@ -3,10 +3,9 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h>
-
+#include <time.h>
 #include "http_common.h"
-    int
-    IsIndexUri(char *path)
+int IsIndexUri(char *path)
 {
     const char *suffix = "index.html";
     size_t path_len = strlen(path);
@@ -77,17 +76,35 @@ int WriteIndexHtml(char *path, httpResponse *response)
 
     long file_size = ftell(index_html);
     rewind(index_html);
+    sprintf(response->headers.base.entity.content_length, "Content-Length: %ld\r\n", file_size);
+    strcat(response->message, response->headers.base.entity.content_length);
+    struct stat attr;
+    stat(path, &attr);
+    sprintf(response->headers.base.entity.content_length, "Last-Modified: %s\r\n", ctime(&attr.st_mtime));
+    strcat(response->message, response->headers.base.entity.content_length);
 
     char *html_buffer = (char *)malloc(file_size);
     fread(html_buffer, 1, file_size, index_html);
-    strncpy(response->message, html_buffer, file_size);
-    response->message_length = file_size;
+    strcat(response->message, "\r\n");
+    strcat(response->message, html_buffer);
+    response->message_length = strlen(response->message);
     return 0;
 }
+int WriteResponseHeaders(httpResponseHeaders *response_headers)
+{
+    memset(response_headers->Server, '\0', BUFFER_SIZE);
+    memset(response_headers->base.entity.content_type, '\0', BUFFER_SIZE);
 
+    time_t curr_time;
+    time(&curr_time);
+
+    sprintf(response_headers->base.general.date, "Date: %s", ctime(&curr_time));
+    strcpy(response_headers->Server, "Server: SWS\r\n");
+    strcpy(response_headers->base.entity.content_type, "Content-Type: text/html\r\n");
+    return 0;
+}
 int WriteResponse(httpRequestLine *request_line, httpRequestHeaders *request_headers, httpResponse *response)
 {
-    // TODO: write cgi results if uri starts with  /cgi-bin
     if (IsDir(request_line->uri) == 0 && HasIndexHtml(request_line->uri))
     {
         const char *suffix = "/index.html";
@@ -104,8 +121,11 @@ int WriteResponse(httpRequestLine *request_line, httpRequestHeaders *request_hea
     }
     memset(response->message, '\0', BUFFER_SIZE);
 
-    // TODO: generate response header
-    // TODO: add headers to response message
+
+    WriteResponseHeaders(&response->headers);
+    strcat(response->message, response->headers.base.general.date);
+    strcat(response->message, response->headers.Server);
+    strcat(response->message, response->headers.base.entity.content_type);
     if (IsIndexUri(request_line->uri) == 0)
     {
         WriteIndexHtml(request_line->uri, response);

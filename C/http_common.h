@@ -51,6 +51,7 @@ typedef struct HttpRequestHeaders
 typedef struct HttpResponseHeaders
 {
     httpBaseHeaders base;
+    char Server[BUFFER_SIZE];
 } httpResponseHeaders;
 
 typedef struct HttpResponse

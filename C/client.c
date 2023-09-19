@@ -63,14 +63,11 @@ void CheckClientActivity(struct pollfd poll_fds[], int server_fd, int *connected
         }
         if (curr_poll_fd.fd != -1 && poll_fds[i].revents & POLLIN)
         {
-            // Initialize all fields to NULL, NULL indicates no error after  reading request
             httpResponse response;
             httpRequestLine request_line;
             httpRequestHeaders request_headers;
-            char *full_response_message;
 
             ReadRequest(poll_fds, i, connected_sockets_count, &request_line, &request_headers, &response);
-            // TODO: check if cgi is enabled and execute cgi.
             WriteResponse(&request_line, &request_headers, &response);
             if (send(poll_fds[i].fd, response.message, response.message_length, 0) == -1)
             {
